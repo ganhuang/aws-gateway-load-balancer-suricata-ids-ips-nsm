@@ -1,8 +1,11 @@
-AWSTemplateFormatVersion: "2010-09-09"
+WSTemplateFormatVersion: "2010-09-09"
 
 Parameters:
   VpcId:
     Description: The VPC id
+    Type: String
+  Gwlb:
+    Description: The Gwlb id
     Type: String
   VpcCidr:
     Description: The VPC CIDR block
@@ -12,9 +15,6 @@ Parameters:
     Type: String
   PrivateSubnet2:
     Description: The Private Subnet 2 id
-    Type: String
-  PrivateSubnet3:
-    Description: The Private Subnet 3 id
     Type: String
   Ami:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
@@ -188,14 +188,6 @@ Resources:
       SecurityGroups: 
         - !Ref SuricataLogsEfsSecurityGroup
       SubnetId: !Ref PrivateSubnet2
-
-  SuricataLogsEfsMountTarget3:
-    Type: AWS::EFS::MountTarget
-    Properties: 
-      FileSystemId: !Ref SuricataLogsEfs
-      SecurityGroups: 
-        - !Ref SuricataLogsEfsSecurityGroup
-      SubnetId: !Ref PrivateSubnet3
 
   SuricataLogsEfsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -400,21 +392,6 @@ Resources:
         - Key: Name
           Value: "Suricata SG"
 
-  Gwlb:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Type: gateway
-      LoadBalancerAttributes:
-        - Key: load_balancing.cross_zone.enabled
-          Value: True
-      Subnets:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-        - !Ref PrivateSubnet3
-      Tags:
-      - Key: Name
-        Value: "Suricata GWLB"
-
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -443,9 +420,9 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       ManagedPolicyArns:
-        - "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
-        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-        - "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/CloudWatchAgentServerPolicy"
       Policies:
         - PolicyDocument:
             Statement:
@@ -460,14 +437,14 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                Resource: !Sub arn:aws:s3:::${DynamicRulesS3Path}
+                Resource: !Sub arn:${AWS::Partition}:s3:::${DynamicRulesS3Path}
               - Effect: Allow
                 Action:
                   - ssm:GetParameters
                   - ssm:GetParameter
                   - ssm:GetParametersByPath
                   - ssm:PutParameter
-                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/suricata/*
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/suricata/*
           PolicyName: SuricataEc2Policy
       AssumeRolePolicyDocument:
         Statement:
@@ -673,7 +650,6 @@ Resources:
       VPCZoneIdentifier:
       - !Ref PrivateSubnet1
       - !Ref PrivateSubnet2
-      - !Ref PrivateSubnet3
       TargetGroupARNs:
       - !Ref TargetGroup
       Tags:
@@ -681,109 +657,7 @@ Resources:
         Value: 'Suricata Instance'
         PropagateAtLaunch: True
 
-##
-## VPC Endpoint
-##
-  VpcEndpointService:
-    Type: AWS::EC2::VPCEndpointService
-    Properties:
-      GatewayLoadBalancerArns:
-        - !Ref Gwlb
-      AcceptanceRequired: False
-
-  LambdaExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      Path: /
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: arn:aws:logs:*:*:*
-              - Effect: Allow
-                Action:
-                  - ec2:DescribeVpcEndpointServiceConfigurations
-                  - ec2:DescribeVpcEndpointServicePermissions
-                  - ec2:DescribeVpcEndpointServices
-                Resource: "*"
-
-  DescribeVpceService:
-    Type: AWS::Lambda::Function
-    Properties:
-      Handler: "index.handler"
-      Role: !GetAtt
-        - LambdaExecutionRole
-        - Arn
-      Code:
-        ZipFile: |
-          import boto3
-          import cfnresponse
-          import json
-          import logging
-          def handler(event, context):
-              logger = logging.getLogger()
-              logger.setLevel(logging.INFO)
-              responseData = {}
-              responseStatus = cfnresponse.FAILED
-              logger.info('Received event: {}'.format(json.dumps(event)))
-              if event["RequestType"] == "Delete":
-                  responseStatus = cfnresponse.SUCCESS
-                  cfnresponse.send(event, context, responseStatus, responseData)
-              if event["RequestType"] == "Create":
-                  try:
-                      VpceServiceId = event["ResourceProperties"]["Input"]
-                  except Exception as e:
-                      logger.info('VPC Endpoint Service Id retrival failure: {}'.format(e))
-                  try:
-                      ec2 = boto3.client('ec2')
-                  except Exception as e:
-                      logger.info('boto3.client failure: {}'.format(e))
-                  try:
-                      response = ec2.describe_vpc_endpoint_service_configurations(
-                          Filters=[
-                              {
-                                  'Name': 'service-id',
-                                  'Values': [VpceServiceId]
-                              }
-                          ]
-                      )
-                  except Exception as e:
-                      logger.info('ec2.describe_vpc_endpoint_service_configurations failure: {}'.format(e))
-                  ServiceName = response['ServiceConfigurations'][0]['ServiceName']
-                  responseData['Data'] = ServiceName
-                  responseStatus = cfnresponse.SUCCESS
-                  cfnresponse.send(event, context, responseStatus, responseData)
-      Runtime: python3.7
-      Timeout: 30
-
-  VpceServiceName:
-    Type: Custom::DescribeVpcEndpointServiceConfigurations
-    Properties:
-      ServiceToken: !GetAtt DescribeVpceService.Arn
-      Input: !Ref VpcEndpointService
-
 Outputs:
   ApplianceGwlbArn:
     Description: Appliance VPC GWLB ARN
     Value: !Ref Gwlb
-  ApplianceVpcEndpointServiceId:
-    Description: Appliance VPC Endpoint Service ID
-    Value: !Ref VpcEndpointService
-  ApplianceVpcEndpointServiceName:
-    Description: Appliance VPC Endpoint Service Name. Required to create GWLB Endpoint
-    Value: !GetAtt VpceServiceName.Data
