@@ -1,6 +1,9 @@
 WSTemplateFormatVersion: "2010-09-09"
 
 Parameters:
+  SuricataBucketPrefix:
+    Default: suricata-cluster
+    Type: String
   VpcId:
     Description: The VPC id
     Type: String
@@ -95,7 +98,7 @@ Resources:
     Condition: HasSuricataRulesets
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /${AWS::StackName}/suricata/rulesets
+      Name: !Sub /${SuricataBucketPrefix}/suricata/rulesets
       Type:  String
       Value: !Ref SuricataRulesets
 
@@ -103,7 +106,7 @@ Resources:
     Condition: HasMaxMindApiKey
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /${AWS::StackName}/suricata/maxmindapikey
+      Name: !Sub /${SuricataBucketPrefix}/suricata/maxmindapikey
       Type:  String
       Value: !Ref MaxMindApiKey
 
@@ -113,42 +116,42 @@ Resources:
   SuricataEveLogGroup:
     Type: AWS::Logs::LogGroup
     Properties: 
-      LogGroupName: !Sub /${AWS::StackName}/suricata/eve
+      LogGroupName: !Sub /${SuricataBucketPrefix}/suricata/eve
       RetentionInDays: !Ref EveLogRententionCloudWatch
   SuricataFastLogGroup:
     Type: AWS::Logs::LogGroup
     Properties: 
-      LogGroupName: !Sub /${AWS::StackName}/suricata/fast
+      LogGroupName: !Sub /${SuricataBucketPrefix}/suricata/fast
       RetentionInDays: !Ref DefaultLogRententionCloudWatch
   SuricataHttpLogGroup:
     Type: AWS::Logs::LogGroup
     Properties: 
-      LogGroupName: !Sub /${AWS::StackName}/suricata/http
+      LogGroupName: !Sub /${SuricataBucketPrefix}/suricata/http
       RetentionInDays: !Ref DefaultLogRententionCloudWatch
   SuricataTlsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties: 
-      LogGroupName: !Sub /${AWS::StackName}/suricata/tls
+      LogGroupName: !Sub /${SuricataBucketPrefix}/suricata/tls
       RetentionInDays: !Ref DefaultLogRententionCloudWatch
   SuricataAlertDebugLogGroup:
     Type: AWS::Logs::LogGroup
     Properties: 
-      LogGroupName: !Sub /${AWS::StackName}/suricata/alert-debug
+      LogGroupName: !Sub /${SuricataBucketPrefix}/suricata/alert-debug
       RetentionInDays: !Ref DefaultLogRententionCloudWatch
   SuricataStatsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties: 
-      LogGroupName: !Sub /${AWS::StackName}/suricata/stats
+      LogGroupName: !Sub /${SuricataBucketPrefix}/suricata/stats
       RetentionInDays: !Ref DefaultLogRententionCloudWatch
   SuricataTcpDataLogGroup:
     Type: AWS::Logs::LogGroup
     Properties: 
-      LogGroupName: !Sub /${AWS::StackName}/suricata/tcp-data
+      LogGroupName: !Sub /${SuricataBucketPrefix}/suricata/tcp-data
       RetentionInDays: !Ref DefaultLogRententionCloudWatch
   SuricataHttpDataLogGroup:
     Type: AWS::Logs::LogGroup
     Properties: 
-      LogGroupName: !Sub /${AWS::StackName}/suricata/http-data
+      LogGroupName: !Sub /${SuricataBucketPrefix}/suricata/http-data
       RetentionInDays: !Ref DefaultLogRententionCloudWatch
           
   SuricataPcapBucket:
@@ -258,7 +261,7 @@ Resources:
   SuricataTaskDefinition: 
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: !Sub ${AWS::StackName}-SuricataTaskDefinition
+      Family: !Sub ${SuricataBucketPrefix}-SuricataTaskDefinition
       NetworkMode: host
       Volumes:
         - Host: 
@@ -277,7 +280,7 @@ Resources:
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: !Sub "/${AWS::StackName}/container/suricata/stdout"
+              awslogs-group: !Sub "/${SuricataBucketPrefix}/container/suricata/stdout"
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: "stdout"
               awslogs-create-group: "true"
@@ -301,15 +304,15 @@ Resources:
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: !Sub "/${AWS::StackName}/container/rulesfetcher/stdout"
+              awslogs-group: !Sub "/${SuricataBucketPrefix}/container/rulesfetcher/stdout"
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: "stdout"
               awslogs-create-group: "true"
           Environment:
             - Name: RulesetsSsmParameter
-              Value: !Sub /${AWS::StackName}/suricata/rulesets
+              Value: !Sub /${SuricataBucketPrefix}/suricata/rulesets
             - Name: MaxMindApiKeySsmParameter
-              Value: !Sub /${AWS::StackName}/suricata/maxmindapikey
+              Value: !Sub /${SuricataBucketPrefix}/suricata/maxmindapikey
             - Name: REGION
               Value: !Ref AWS::Region
             - Name: DynamicRulesS3Path
@@ -444,7 +447,7 @@ Resources:
                   - ssm:GetParameter
                   - ssm:GetParametersByPath
                   - ssm:PutParameter
-                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/suricata/*
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SuricataBucketPrefix}/suricata/*
           PolicyName: SuricataEc2Policy
       AssumeRolePolicyDocument:
         Statement:
@@ -573,15 +576,15 @@ Resources:
               "logs_collected": {
                 "files": {
                   "collect_list": [
-                    {"file_path": "/var/log/suricata/eve.json", "log_group_name": "/${AWS::StackName}/suricata/eve"},
-                    {"file_path": "/var/log/suricata/fast.log", "log_group_name": "/${AWS::StackName}/suricata/fast"},
-                    {"file_path": "/var/log/suricata/http.log", "log_group_name": "/${AWS::StackName}/suricata/http"},
-                    {"file_path": "/var/log/suricata/tls.log", "log_group_name": "/${AWS::StackName}/suricata/tls"},
-                    {"file_path": "/var/log/suricata/alert-debug.log", "log_group_name": "/${AWS::StackName}/suricata/alert-debug"},
-                    {"file_path": "/var/log/suricata/stats.log", "log_group_name": "/${AWS::StackName}/suricata/stats"},
-                    {"file_path": "/var/log/suricata/tcp-data.log", "log_group_name": "/${AWS::StackName}/suricata/tcp-data"},
-                    {"file_path": "/var/log/suricata/http-data.log", "log_group_name": "/${AWS::StackName}/suricata/http-data"},
-                    {"file_path": "/var/log/suricata/server.log","log_group_name": "/${AWS::StackName}/suricata/container"}
+                    {"file_path": "/var/log/suricata/eve.json", "log_group_name": "/${SuricataBucketPrefix}/suricata/eve"},
+                    {"file_path": "/var/log/suricata/fast.log", "log_group_name": "/${SuricataBucketPrefix}/suricata/fast"},
+                    {"file_path": "/var/log/suricata/http.log", "log_group_name": "/${SuricataBucketPrefix}/suricata/http"},
+                    {"file_path": "/var/log/suricata/tls.log", "log_group_name": "/${SuricataBucketPrefix}/suricata/tls"},
+                    {"file_path": "/var/log/suricata/alert-debug.log", "log_group_name": "/${SuricataBucketPrefix}/suricata/alert-debug"},
+                    {"file_path": "/var/log/suricata/stats.log", "log_group_name": "/${SuricataBucketPrefix}/suricata/stats"},
+                    {"file_path": "/var/log/suricata/tcp-data.log", "log_group_name": "/${SuricataBucketPrefix}/suricata/tcp-data"},
+                    {"file_path": "/var/log/suricata/http-data.log", "log_group_name": "/${SuricataBucketPrefix}/suricata/http-data"},
+                    {"file_path": "/var/log/suricata/server.log","log_group_name": "/${SuricataBucketPrefix}/suricata/container"}
                   ]
                 }
               }
